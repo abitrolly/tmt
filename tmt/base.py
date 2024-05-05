@@ -2300,17 +2300,68 @@ class Plan(
         # Run enabled steps except 'finish'
         self.debug('go', color='cyan', shift=0, level=2)
         abort = False
+        call_finish = True
         try:
             for step in self.steps(skip=['finish']):
                 step.go()
-                # Finish plan if no tests found (except dry mode)
-                if (isinstance(step, tmt.steps.discover.Discover) and not step.tests()
-                        and not self.is_dry_run and not step.extract_tests_later):
-                    step.info(
-                        'warning', 'No tests found, finishing plan.',
-                        color='yellow', shift=1)
-                    abort = True
-                    return
+
+                if isinstance(step, tmt.steps.discover.Discover):
+                    tests = step.tests()
+
+                    # Finish plan if no tests found (except dry mode)
+                    if not tests and not self.is_dry_run and not step.extract_tests_later:
+                        step.info(
+                            'warning', 'No tests found, finishing plan.',
+                            color='yellow', shift=1)
+                        abort = True
+                        return
+
+                    if self.my_run:
+                        call_finish = False
+
+                        max_test_count = self.my_run.opt('max')
+
+                        if max_test_count > 0 and len(tests) > max_test_count:
+                            new_plans: list[Plan] = []
+
+                            for batch_id in itertools.count(1):
+                                if not tests:
+                                    break
+
+                                batch: dict[str, list[Test]] = {}
+
+                                for _ in range(max_test_count):
+                                    if not tests:
+                                        break
+
+                                    phase_name, test = tests.pop(0)
+
+                                    if phase_name not in batch:
+                                        batch[phase_name] = [test]
+
+                                    else:
+                                        batch[phase_name].append(test)
+
+                                new_plan = copy.deepcopy(self)
+
+                                new_plan.name = f'{self.name}.{batch_id}'
+
+                                new_plan._workdir = None
+                                for step_name in tmt.steps.STEPS:
+                                    getattr(new_plan, step_name)._workdir = None
+
+                                new_plan.discover.status('done')
+                                new_plan.discover._tests = batch
+
+                                for step_name in tmt.steps.STEPS:
+                                    getattr(new_plan, step_name).save()
+
+                                new_plans.append(new_plan)
+
+                            self.my_run.swap_plans(self, *new_plans)
+
+                            break
+
                 # Source the plan environment file after prepare and execute step
                 if isinstance(step, (tmt.steps.prepare.Prepare, tmt.steps.execute.Execute)):
                     self._source_plan_environment_file()
@@ -3405,6 +3456,18 @@ class Run(tmt.utils.Common):
             self._plans = self.tree.plans(run=self, filters=['enabled:true'])
         return self._plans
 
+    @tmt.utils.cached_property
+    def plan_queue(self) -> list[Plan]:
+        return self.plans[:]
+
+    def swap_plans(self, plan: Plan, *others: Plan) -> None:
+        if plan in self.plan_queue:
+            self.plan_queue.remove(plan)
+            self.plans.remove(plan)
+
+        self.plan_queue.extend(others)
+        self.plans.extend(others)
+
     def finish(self) -> None:
         """ Check overall results, return appropriate exit code """
         # We get interesting results only if execute or prepare step is enabled
@@ -3567,7 +3630,9 @@ class Run(tmt.utils.Common):
         # Iterate over plans
         crashed_plans: list[tuple[Plan, Exception]] = []
 
-        for plan in self.plans:
+        while self.plan_queue:
+            plan = self.plan_queue.pop(0)
+
             try:
                 plan.go()
 
