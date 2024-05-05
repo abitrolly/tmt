@@ -708,9 +708,10 @@ class Core(
                  tree: Optional['Tree'] = None,
                  parent: Optional[tmt.utils.Common] = None,
                  logger: tmt.log.Logger,
+                 name: Optional[str] = None,
                  **kwargs: Any) -> None:
         """ Initialize the node """
-        super().__init__(node=node, logger=logger, parent=parent, name=node.name, **kwargs)
+        super().__init__(node=node, logger=logger, parent=parent, name=name or node.name, **kwargs)
 
         self.node = node
         self.tree = tree
@@ -2257,6 +2258,51 @@ class Plan(
         if self.summary:
             self.verbose('summary', self.summary, 'green')
 
+    # TODO: move these to some place nice, like a plan-splitting plugin. A check
+    # and a splitter can easily form new family of plugins.
+    def _shall_trim_by_test_count(self, tests: list[tuple[str, Test]]) -> bool:
+        if not self.my_run:
+            return False
+
+        max_test_count = self.my_run.opt('max')
+
+        if max_test_count <= 0:
+            return False
+
+        if len(tests) <= max_test_count:
+            return False
+
+        return True
+
+    def _trim_by_test_count(
+            self,
+            tests: list[tuple[str, Test]],
+            ) -> Iterator['Plan']:
+        assert self.my_run is not None
+
+        max_test_per_batch = self.my_run.opt('max')
+        trimmed_plans: list[Plan] = []
+
+        for batch_id in itertools.count(1):
+            if not tests:
+                break
+
+            batch: dict[str, list[Test]] = {}
+
+            for _ in range(max_test_per_batch):
+                if not tests:
+                    break
+
+                phase_name, test = tests.pop(0)
+
+                if phase_name not in batch:
+                    batch[phase_name] = [test]
+
+                else:
+                    batch[phase_name].append(test)
+
+            yield self.trim_plan(batch_id, batch)
+
     def go(self) -> None:
         """ Execute the plan """
         self.header()
@@ -2316,51 +2362,12 @@ class Plan(
                         abort = True
                         return
 
-                    if self.my_run:
+                    if self.my_run and self._shall_trim_by_test_count(tests):
                         call_finish = False
 
-                        max_test_count = self.my_run.opt('max')
+                        self.my_run.swap_plans(self, *self._trim_by_test_count(tests))
 
-                        if max_test_count > 0 and len(tests) > max_test_count:
-                            new_plans: list[Plan] = []
-
-                            for batch_id in itertools.count(1):
-                                if not tests:
-                                    break
-
-                                batch: dict[str, list[Test]] = {}
-
-                                for _ in range(max_test_count):
-                                    if not tests:
-                                        break
-
-                                    phase_name, test = tests.pop(0)
-
-                                    if phase_name not in batch:
-                                        batch[phase_name] = [test]
-
-                                    else:
-                                        batch[phase_name].append(test)
-
-                                new_plan = copy.deepcopy(self)
-
-                                new_plan.name = f'{self.name}.{batch_id}'
-
-                                new_plan._workdir = None
-                                for step_name in tmt.steps.STEPS:
-                                    getattr(new_plan, step_name)._workdir = None
-
-                                new_plan.discover.status('done')
-                                new_plan.discover._tests = batch
-
-                                for step_name in tmt.steps.STEPS:
-                                    getattr(new_plan, step_name).save()
-
-                                new_plans.append(new_plan)
-
-                            self.my_run.swap_plans(self, *new_plans)
-
-                            break
+                        break
 
                 # Source the plan environment file after prepare and execute step
                 if isinstance(step, (tmt.steps.prepare.Prepare, tmt.steps.execute.Execute)):
@@ -2505,6 +2512,21 @@ class Plan(
             expand_node_data(node.data, self._fmf_context)
 
         return self._imported_plan
+
+    def trim_plan(self, batch_id: int, tests: dict[str, list[Test]]) -> 'Plan':
+        batch_plan = Plan(
+            node=self.node,
+            run=self.my_run,
+            logger=self._logger,
+            name=f'{self.name}.{batch_id}')
+
+        batch_plan.discover._tests = tests
+        batch_plan.discover.status('done')
+
+        for step_name in tmt.steps.STEPS:
+            getattr(batch_plan, step_name).save()
+
+        return batch_plan
 
     def prune(self) -> None:
         """ Remove all uninteresting files from the plan workdir """
