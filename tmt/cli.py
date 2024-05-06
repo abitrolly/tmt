@@ -412,6 +412,7 @@ def main(
          """)
 @option(
     '--max',
+    help='Max tests in plan',
     type=int,
     default=-1)
 @environment_options

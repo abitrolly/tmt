@@ -2346,7 +2346,6 @@ class Plan(
         # Run enabled steps except 'finish'
         self.debug('go', color='cyan', shift=0, level=2)
         abort = False
-        call_finish = True
         try:
             for step in self.steps(skip=['finish']):
                 step.go()
@@ -2363,8 +2362,6 @@ class Plan(
                         return
 
                     if self.my_run and self._shall_trim_by_test_count(tests):
-                        call_finish = False
-
                         self.my_run.swap_plans(self, *self._trim_by_test_count(tests))
 
                         break
@@ -2522,6 +2519,8 @@ class Plan(
 
         batch_plan.discover._tests = tests
         batch_plan.discover.status('done')
+
+        shutil.copytree(self.discover.workdir, batch_plan.discover.workdir, dirs_exist_ok=True)
 
         for step_name in tmt.steps.STEPS:
             getattr(batch_plan, step_name).save()
