@@ -1261,6 +1261,15 @@ class Test(
                 force=force,
                 logger=logger)
 
+            if links.get('verifies') and dry is False:
+                test = Tree(
+                    path=path,
+                    logger=logger).tests(
+                    names=[
+                        directory_path.name],
+                    apply_command_line=False)
+                tmt.utils.jira_link(nodes=[test], links=links)
+
     @property
     def manual_test_path(self) -> Path:
         assert self.manual, 'Test is not manual yet path to manual instructions was requested'
@@ -1899,6 +1908,13 @@ class Plan(
         # Override template with data provided on command line
         plan_content = Plan.edit_template(plan_content)
 
+        # Append link with appropriate relation
+        links = Links(data=list(cast(list[_RawLink], Plan._opt('link', []))))
+        if links:  # Output 'links' if and only if it is not empty
+            plan_content += dict_to_yaml({
+                'link': links.to_spec()
+                })
+
         for name in names:
             (directory, plan) = os.path.split(name)
             directory_path = path / directory.lstrip('/')
@@ -1919,6 +1935,15 @@ class Plan(
                 dry=dry,
                 force=force,
                 logger=logger)
+
+            if links.get('verifies') and dry is False:
+                plan_list = Tree(
+                    path=path,
+                    logger=logger).plans(
+                    names=[
+                        directory_path.name],
+                    apply_remote_keys=False)
+                tmt.utils.jira_link(nodes=[plan_list], links=links)
 
     def _iter_steps(self,
                     enabled_only: bool = True,
@@ -2606,6 +2631,13 @@ class Story(
             except KeyError:
                 raise tmt.utils.GeneralError(f"Invalid template '{template}'.")
 
+        # Append link with appropriate relation
+        links = Links(data=list(cast(list[_RawLink], Story._opt('link', []))))
+        if links:  # Output 'links' if and only if it is not empty
+            story_content += dict_to_yaml({
+                'link': links.to_spec()
+                })
+
         for name in names:
             # Prepare paths
             (directory, story) = os.path.split(name)
@@ -2627,6 +2659,15 @@ class Story(
                 dry=dry,
                 force=force,
                 logger=logger)
+
+            if links.get('verifies') and dry is False:
+                story_list = Tree(
+                    path=path,
+                    logger=logger).stories(
+                    names=[
+                        directory_path.name],
+                    apply_keys=False)
+                tmt.utils.jira_link(nodes=[story_list], links=links)
 
     @staticmethod
     def overview(tree: 'Tree') -> None:
@@ -2862,7 +2903,8 @@ class Tree(tmt.utils.Common):
             conditions: Optional[list[str]] = None,
             unique: bool = True,
             links: Optional[list['LinkNeedle']] = None,
-            excludes: Optional[list[str]] = None
+            excludes: Optional[list[str]] = None,
+            apply_command_line: Optional[bool] = True
             ) -> list[Test]:
         """ Search available tests """
         # Handle defaults, apply possible command line options
@@ -2886,6 +2928,8 @@ class Tree(tmt.utils.Common):
         def name_filter(nodes: Iterable[fmf.Tree]) -> list[fmf.Tree]:
             """ Filter nodes based on names provided on the command line """
             if not cmd_line_names:
+                return list(nodes)
+            if not apply_command_line:
                 return list(nodes)
             return [
                 node for node in nodes
@@ -2943,7 +2987,8 @@ class Tree(tmt.utils.Common):
             conditions: Optional[list[str]] = None,
             run: Optional['Run'] = None,
             links: Optional[list['LinkNeedle']] = None,
-            excludes: Optional[list[str]] = None
+            excludes: Optional[list[str]] = None,
+            apply_remote_keys: Optional[bool] = True
             ) -> list[Plan]:
         """ Search available plans """
         # Handle defaults, apply possible command line options
@@ -2976,6 +3021,9 @@ class Tree(tmt.utils.Common):
         else:
             sources = None
 
+        if not apply_remote_keys:
+            remote_plan_keys = []
+
         # Build the list, convert to objects, sort and filter
         plans = [
             Plan(
@@ -3000,7 +3048,6 @@ class Tree(tmt.utils.Common):
 
         if not Plan._opt('shallow'):
             plans = [plan.import_plan() or plan for plan in plans]
-
         return self._filters_conditions(
             sorted(plans, key=lambda plan: plan.order),
             filters, conditions, links, excludes)
@@ -3014,7 +3061,8 @@ class Tree(tmt.utils.Common):
             conditions: Optional[list[str]] = None,
             whole: bool = False,
             links: Optional[list['LinkNeedle']] = None,
-            excludes: Optional[list[str]] = None
+            excludes: Optional[list[str]] = None,
+            apply_keys: Optional[bool] = True
             ) -> list[Story]:
         """ Search available stories """
         # Handle defaults, apply possible command line options
@@ -3045,6 +3093,9 @@ class Tree(tmt.utils.Common):
             names = None
         else:
             sources = None
+
+        if not apply_keys:
+            keys = None
 
         # Build the list, convert to objects, sort and filter
         stories = [
