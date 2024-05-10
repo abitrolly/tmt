@@ -137,7 +137,7 @@ dependencies = [
     "types-urllib3",
     "types-jinja2",
     "types-babel",
-    "types-docutils"
+    "types-docutils",
     ]
 features = ["all"]
 
