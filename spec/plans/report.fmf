@@ -128,6 +128,12 @@ description:
         # Optionally set environment variables according to TMT_PLUGIN_REPORT_REPORTPORTAL_${OPTION}
         export TMT_PLUGIN_REPORT_REPORTPORTAL_URL=${url-to-RP-instance}
         export TMT_PLUGIN_REPORT_REPORTPORTAL_TOKEN=${token-from-RP-profile}
+
+        # Bolean options are activated with value of 1:
+        TMT_PLUGIN_REPORT_REPORTPORTAL_SUITE_PER_PLAN=1
+
+      - NOTE: All options are supported in the format demonstrated above to enable execution purely via metadata and/or environment variables (e.g. Testing Farm)
+
       - |
         # Enable ReportPortal report from the command line depending on the use case:
 

@@ -104,7 +104,7 @@ class ReportReportPortalData(tmt.steps.report.ReportStepData):
 
     upload_to_suite: Optional[str] = field(
         option="--upload-to-suite",
-        metavar="LAUNCH_SUITE",
+        metavar="SUITE_ID",
         default=_str_env_to_default('upload_to_suite', None),
         help="""
              Pass the suite ID for an additional test upload to a suite
@@ -151,7 +151,7 @@ class ReportReportPortalData(tmt.steps.report.ReportStepData):
     artifacts_url: Optional[str] = field(
         metavar="ARTIFACTS_URL",
         option="--artifacts-url",
-        default=os.getenv('TMT_REPORT_ARTIFACTS_URL'),
+        default=_str_env_to_default('artifacts_url', None),
         help="Link to test artifacts provided for report plugins.")
 
     launch_url: Optional[str] = None
@@ -239,12 +239,12 @@ class ReportReportPortal(tmt.steps.report.ReportPlugin[ReportReportPortalData]):
         """
         Write warning if there might be caused an unexpected behaviour by the option combinations
         """
-        # TODO: Update restriction of forbiden option combinations based on feedback.
 
         if self.data.launch_per_plan and self.data.suite_per_plan:
-            raise tmt.utils.ReportError(
+            self.warn(
                 "The options '--launch-per-plan' and '--suite-per-plan' are mutually exclusive. "
-                "Choose one of them only.")
+                "Default option '--launch-per-plan' is used.")
+            self.data.suite_per_plan = False
 
         if self.data.launch_rerun and (self.data.upload_to_launch or self.data.upload_to_suite):
             self.warn("Unexpected option combination: "
@@ -291,13 +291,20 @@ class ReportReportPortal(tmt.steps.report.ReportPlugin[ReportReportPortalData]):
         defect_types = yaml_to_dict(response.text).get("subTypes")
         if not defect_types:
             return "ti001"
-        dt_tmp = [dt['locator'] for dt in defect_types['TO_INVESTIGATE']
-                  if dt['longName'].lower() == defect_type.lower()]
-        dt_locator = dt_tmp[0] if dt_tmp else None
+
+        groups_to_search = ['TO_INVESTIGATE', 'NO_DEFECT',
+                            'SYSTEM_ISSUE', 'AUTOMATION_BUG', 'PRODUCT_BUG']
+        for group_name in groups_to_search:
+            defect_types_list = defect_types[group_name]
+            dt_tmp = [dt['locator'] for dt in defect_types_list
+                      if dt['longName'].lower() == defect_type.lower()]
+            dt_locator = dt_tmp[0] if dt_tmp else None
+            if dt_locator:
+                break
         if not dt_locator:
             raise tmt.utils.ReportError(f"Defect type '{defect_type}' "
                                         "is not be defined in the project {self.data.project}")
-        self.verbose("defect_typ", defect_type, "yellow")
+        self.verbose("defect_type", defect_type, color="cyan", shift=1)
         return str(dt_locator)
 
     def get_rp_api(self, session: requests.Session, data_path: str) -> requests.Response:
