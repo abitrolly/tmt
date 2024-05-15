@@ -1333,7 +1333,12 @@ def _parse_location(spec: Spec) -> BaseConstraint:
 
     group = And()
 
-    group.constraints += _parse_text_constraints(spec, 'location', ('lab-controller',))
+    group.constraints += _parse_text_constraints(spec,
+                                                 'location',
+                                                 ('lab-controller',
+                                                  ),
+                                                 [Operator.EQ,
+                                                  Operator.NEQ])
 
     return group
 
