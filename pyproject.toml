@@ -39,7 +39,6 @@ dependencies = [              # F39 / PyPI
     "requests>=2.25.1",       # 2.28.2 / 2.31.0
     "ruamel.yaml>=0.16.6",    # 0.17.32 / 0.17.32
     "urllib3>=1.26.5, <3.0",  # 1.26.16 / 2.0.4
-    "jira"
     ]
 
 [project.optional-dependencies]
@@ -66,6 +65,9 @@ report-polarion = [
     "tmt[report-junit]",
     "tmt[export-polarion]",
     ]
+link-jira = [
+    "jira>=3.2.0",
+    ]
 all = [
     "tmt[test-convert]",
     "tmt[export-polarion]",
@@ -74,6 +76,7 @@ all = [
     "tmt[provision-beaker]",
     "tmt[report-junit]",
     "tmt[report-polarion]",
+    "tmt[link-jira]",
     ]
 # Needed for readthedocs and man page build. Not being packaged in rpm.
 docs = [
