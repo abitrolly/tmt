@@ -60,7 +60,6 @@ import urllib3
 import urllib3.exceptions
 import urllib3.util.retry
 from click import echo, style, wrap_text
-from jira import JIRA
 from ruamel.yaml import YAML, scalarstring
 from ruamel.yaml.comments import CommentedMap
 from ruamel.yaml.parser import ParserError
@@ -85,6 +84,8 @@ if TYPE_CHECKING:
         from typing import TypeAlias
     else:
         from typing_extensions import TypeAlias
+
+JIRA: Any = None
 
 
 class Path(pathlib.PosixPath):
@@ -7273,11 +7274,22 @@ def render_rst(text: str, logger: Logger) -> str:
     return visitor.rendered
 
 
+def import_jira() -> None:
+    """ Import polarion Python Jira library """
+    try:
+        global JIRA
+        from jira import JIRA
+    except ImportError:
+        raise GeneralError(
+            "Install 'tmt+link-jira' to use the Jira linking")
+
+
 def jira_link(
         nodes: list[Union['tmt.base.Test', 'tmt.base.Plan', 'tmt.base.Story']],
         links: 'tmt.base.Links',
         separate: bool = False) -> None:
     """ Link the object to Jira issue and create the URL to tmt web service """
+    import_jira()
 
     def create_url_params(tmt_object: 'tmt.base.Core') -> dict[str, str]:
         tmt_type = tmt_object.__class__.__name__.lower()
