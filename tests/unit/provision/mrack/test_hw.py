@@ -90,6 +90,14 @@ def test_maximal_constraint(root_logger: Logger) -> None:
                                 }
                             }
                         },
+                    {
+                        'cpu': {
+                            'hyper_treading': {
+                                '_op': '==',
+                                '_value': 'true'
+                                }
+                            }
+                        },
                     {'or': []},
                     {'or': []},
                     {'or': []},
