@@ -123,6 +123,12 @@ description:
         Provide test results and fmf data per each plan,
         and send it to a Report Portal instance via its API
         with token, url and project name given.
+
+        Note that all options can be passed environment variable
+        in the fomrat TMT_PLUGIN_REPORT_REPORTPORTAL_${OPTION}
+        to enable execution purely via metadata and/or
+        environment variables (e.g. Testing Farm)
+
     example:
       - |
         # Optionally set environment variables according to TMT_PLUGIN_REPORT_REPORTPORTAL_${OPTION}
@@ -131,8 +137,6 @@ description:
 
         # Bolean options are activated with value of 1:
         TMT_PLUGIN_REPORT_REPORTPORTAL_SUITE_PER_PLAN=1
-
-      - NOTE: All options are supported in the format demonstrated above to enable execution purely via metadata and/or environment variables (e.g. Testing Farm)
 
       - |
         # Enable ReportPortal report from the command line depending on the use case:

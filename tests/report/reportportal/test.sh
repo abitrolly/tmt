@@ -12,7 +12,7 @@ TEST_PREFIX='/test'
 declare -A test=([1,'uuid']="" [1,'name']='/bad'   [1,'status']='FAILED'
                  [2,'uuid']="" [2,'name']='/good'  [2,'status']='PASSED'
                  [3,'uuid']="" [3,'name']='/weird' [3,'status']='FAILED')
-
+DIV="|"
 
 ##
 # Read and verify reported launch name, id and uuid from $rlRun_LOG
@@ -68,7 +68,19 @@ function foo_tests(){
     done
 }
 
+function rest_api(){
 
+    rlLog "REST API $1 $2"
+    response=$(curl --write-out "$DIV%{http_code}" --silent -X $1 $2 -H  "accept: */*" -H  "Authorization: bearer $TOKEN")
+
+    response_code=${response##*"$DIV"}
+    response=${response%"$DIV"*}
+    if [[ $response_code -ge 300 ]]; then
+        rlFail "Request responded with an error: $response"
+    fi
+
+    echo "$response"
+}
 
 
 rlJournalStart
@@ -96,9 +108,9 @@ rlJournalStart
 
     rlPhaseStartTest "Core Functionality - DEFAULT SETUP"
 
-        # LAUNCH - via API launch-controller /v1/{projectName}/launch/uuid/{launchId}
-        rlLog "REST API - Get info about the launch"
-        response=$(curl -X GET "$URL/api/v1/$PROJECT/launch/uuid/$launch_uuid" -H  "accept: */*" -H  "Authorization: bearer $TOKEN")
+        rlLogInfo "Get info about the launch"
+        # REST API GET | launch-controller (uuid)
+        response=$(rest_api GET "$URL/api/v1/$PROJECT/launch/uuid/$launch_uuid")
         rlAssertEquals "Assert the URL ID of launch is correct" "$(echo $response | jq -r '.id')" "$launch_id"
         rlAssertEquals "Assert the name of launch is correct" "$(echo $response | jq -r '.name')" "$launch_name"
         rlAssertEquals "Assert the status of launch is correct" "$(echo $response | jq -r '.status')" "$launch_status"
@@ -113,6 +125,8 @@ rlJournalStart
             fi
         fi
 
+
+        echo ""
         # Check all the launch attributes
         rl_message="Test attributes of the launch (context)"
         echo "$response" | jq -r ".attributes" > tmp_attributes.json && rlPass "$rl_message" || rlFail "$rl_message"
@@ -126,6 +140,7 @@ rlJournalStart
         rm tmp_attributes*
 
         for i in {1..3}; do
+            echo ""
             test_name[$i]=${test[$i,'name']}
             test_name=${test_name[$i]}
             test_fullname=${test_fullname[$i]}
@@ -133,11 +148,9 @@ rlJournalStart
             test_status[$i]=${test[$i,'status']}
             test_status=${test_status[$i]}
 
-            echo ""
-
-            # TEST ITEMS - via API test-item-controller /v1/{projectName}/item/uuid/{itemId}
-            rlLog "REST API - Get info about the test item $test_name"
-            response=$(curl -X GET "$URL/api/v1/$PROJECT/item/uuid/$test_uuid" -H  "accept: */*" -H  "Authorization: bearer $TOKEN")
+            rlLogInfo "Get info about the test item $test_name"
+            # REST API GET | test-item-controller (uuid)
+            response=$(rest_api GET "$URL/api/v1/$PROJECT/item/uuid/$test_uuid")
             test_id=$(echo $response | jq -r '.id')
             rlAssertNotEquals "Assert the test id is not empty" "$test_id" ""
             rlAssertEquals "Assert the name is correct" "$(echo $response | jq -r '.name')" "$test_fullname"
@@ -152,7 +165,7 @@ rlJournalStart
                 # Check all the common test attributes/parameters
                 [[ $jq_element == attributes ]] && fmf_label="context"
                 [[ $jq_element == parameters ]] && fmf_label="environment"
-                rlLog "Check the $jq_element for test $test_name ($fmf_label)"
+                rlLogInfo "Check the $jq_element for test $test_name ($fmf_label)"
                 echo "$response" | jq -r ".$jq_element" > tmp_attributes.json || rlFail "$jq_element listing into tmp_attributes.json"
                 length=$(yq -r ".$fmf_label | length" plan.fmf)
                 for ((item_index=0; item_index<$length; item_index++ )); do
@@ -180,9 +193,9 @@ rlJournalStart
                 rm tmp_attributes*
             done
 
-            # Check the logs - via API log-controller /v1/{projectName}/log/nested/{parentId}
-            rlLog "REST API - Get all logs from the test $test_name"
-            response=$(curl -X GET "$URL/api/v1/$PROJECT/log/nested/$test_id" -H  "accept: */*" -H  "Authorization: bearer $TOKEN")
+            rlLogInfo "Get all logs from the test $test_name"
+            # REST API GET | log-controller (parent_id)
+            response=$(rest_api GET "$URL/api/v1/$PROJECT/log/nested/$test_id")
             length=$(echo $response | jq -r ".content | length")
             level=("INFO" "ERROR")
             for ((content_index=0; content_index<$length; content_index++ )); do
@@ -206,10 +219,9 @@ rlJournalStart
         rlAssertNotGrep "suite:" $rlRun_LOG
         foo_tests   # >> $test_uuid[1..3], $test_fullname[1..3]
 
-        # TEST ITEMS - test-item-controller /v1/{projectName}/item  + launch_id
-        rlLog "REST API - Get info about all launch items"
-        response=$(curl -X GET "$URL/api/v1/$PROJECT/item?filter.eq.launchId=$launch_id" -H  "accept: */*" -H  "Authorization: bearer $TOKEN")
-        rlAssertEquals "Assert the response has no error message" "$(echo $response | jq -r .message | grep 'Error')" ""
+        rlLogInfo "Get info about all launch items"
+        # REST API GET | test-item-controller (launch_id)
+        response=$(rest_api GET "$URL/api/v1/$PROJECT/item?filter.eq.launchId=$launch_id")
 
         length=$(echo $response | jq -r ".content | length")
         for ((content_index=0; content_index<$length; content_index++ )); do
@@ -230,14 +242,13 @@ rlJournalStart
         foo_suite   # >> $suite_uuid, $suite_id
         foo_tests   # >> $test_uuid[1..3], $test_fullname[1..3]
 
-        # LAUNCH - via API launch-controller /v1/{projectName}/launch/uuid/{launchId}
-        rlLog "REST API - Get info about the launch"
-        response=$(curl -X GET "$URL/api/v1/$PROJECT/launch/uuid/$launch_uuid" -H  "accept: */*" -H  "Authorization: bearer $TOKEN")
+        echo ""
+        rlLogInfo "Get info about the launch"
+        # REST API GET | launch-controller (uuid)
+        response=$(rest_api GET "$URL/api/v1/$PROJECT/launch/uuid/$launch_uuid")
         rlAssertEquals "Assert the URL ID of launch is correct" "$(echo $response | jq -r '.id')" "$launch_id"
         rlAssertEquals "Assert the name of launch is correct" "$(echo $response | jq -r '.name')" "$launch_name"
         rlAssertEquals "Assert the status of launch is correct" "$(echo $response | jq -r '.status')" "$launch_status"
-        xx="$(echo $response | jq -r .description)"
-        echo $xx
         rlAssertEquals "Assert the description of launch is correct" "$(echo $response | jq -r .description)" "$launch_description"
 
         # Check all the launch attributes
@@ -245,6 +256,7 @@ rlJournalStart
         echo "$response" | jq -r ".attributes" > tmp_attributes.json && rlPass "$rl_message" || rlFail "$rl_message"
         length=$(yq -r ".context | length" plan.fmf)
         for ((item_index=0; item_index<$length; item_index++ )); do
+            echo ""
             key=$(yq -r ".context | keys | .[$item_index]" plan.fmf)
             value=$(yq -r ".context.$key" plan.fmf)
             rlAssertGrep "$key" tmp_attributes.json -A1 > tmp_attributes_selection
@@ -252,13 +264,13 @@ rlJournalStart
         done
         rm tmp_attributes*
 
-        # TEST ITEMS - test-item-controller /v1/{projectName}/item  + launch_id
-        rlLog "REST API - Get info about all launch items"
-        response=$(curl -X GET "$URL/api/v1/$PROJECT/item?filter.eq.launchId=$launch_id" -H  "accept: */*" -H  "Authorization: bearer $TOKEN")
-        rlAssertEquals "Assert the response has no error message" "$(echo $response | jq -r .message | grep 'Error')" ""
-
+        echo ""
+        rlLogInfo "Get info about all launch items"
+        # REST API GET | test-item-controller (launch_id)
+        response=$(rest_api GET "$URL/api/v1/$PROJECT/item?filter.eq.launchId=$launch_id")
         length=$(echo $response | jq -r ".content | length")
         for ((content_index=0; content_index<$length; content_index++ )); do
+            echo ""
             if [[ $content_index -eq 0 ]]; then
                 rlAssertEquals "Assert the item is a suite" "$(echo $response | jq -r .content[$content_index].hasChildren)" "true"
                 rlAssertEquals "Assert the name of suite item ${suite_name}" "$(echo $response | jq -r .content[$content_index].name)" "${suite_name}"
@@ -279,12 +291,14 @@ rlJournalStart
         rlRun -s "tmt run --verbose --all report --how reportportal --suite-per-plan --launch '${launch_name}_1'" 2 "" 1>/dev/null
 
         for i in {1..3}; do
+            echo ""
             test_fullname=${TEST_PREFIX}${test[$i,'name']}
             test_uuid=$(rlRun "grep -m$i -A1 'test:' $rlRun_LOG | tail -n1 | awk '{print \$NF}' ")
             rlAssertNotEquals "Assert the test$i uuid is not empty" "{$test_uuid}" ""
 
-            # TEST ITEM - via API test-item-controller /v1/{projectName}/item/uuid/{itemId}
-            response=$(curl -X GET "$URL/api/v1/$PROJECT/item/uuid/$test_uuid" -H  "accept: */*" -H  "Authorization: bearer $TOKEN")
+            rlLogInfo "Get info about the test item $i"
+            # REST API GET | test-item-controller (uuid)
+            response=$(rest_api GET "$URL/api/v1/$PROJECT/item/uuid/$test_uuid")
             rlAssertEquals "Assert the name is correct" "$(echo $response | jq -r '.name')" "$test_fullname"
             launch1_test_id[$i]=$(echo $response | jq -r '.id')
             rlAssertNotEquals "Assert the test id is not empty" "$launch1_test_id[$i]" ""
@@ -294,21 +308,22 @@ rlJournalStart
         rlRun -s "tmt run --verbose --all report --how reportportal --suite-per-plan --launch '${launch_name}_2'" 2 "" 1>/dev/null
 
         for i in {1..3}; do
+            echo ""
             test_name=${test[$i,'name']}
             test_fullname=${TEST_PREFIX}${test_name}
             test_uuid=$(rlRun "grep -m$i -A1 'test:' $rlRun_LOG | tail -n1 | awk '{print \$NF}' ")
             rlAssertNotEquals "Assert the test$i uuid is not empty" "{$test_uuid}" ""
 
-            # TEST ITEM - via API test-item-controller /v1/{projectName}/item/uuid/{itemId}
-            response=$(curl -X GET "$URL/api/v1/$PROJECT/item/uuid/$test_uuid" -H  "accept: */*" -H  "Authorization: bearer $TOKEN")
+            rlLogInfo "Get info about the test item $i"
+            # REST API GET | test-item-controller (uuid)
+            response=$(rest_api GET "$URL/api/v1/$PROJECT/item/uuid/$test_uuid")
             rlAssertEquals "Assert the name is correct" "$(echo $response | jq -r '.name')" "$test_fullname"
             launch2_test_id[$i]=$(echo $response | jq -r '.id')
             rlAssertNotEquals "Assert the test id is not empty" "$launch2_test_id[$i]" ""
 
-
-            rlLog "Verify the history is aggregated"
-            response=$(curl -X GET "$URL/api/v1/$PROJECT/item/history?filter.eq.id=${launch2_test_id[$i]}&historyDepth=2" -H  "accept: */*" -H  "Authorization: bearer $TOKEN")
-            rlAssertEquals "Assert the response has no error message" "$(echo $response | jq -r .message | grep 'Error')" ""
+            rlLogInfo "Verify the history is aggregated"
+            # REST API GET | test-item-controller (history)
+            response=$(rest_api GET "$URL/api/v1/$PROJECT/item/history?filter.eq.id=${launch2_test_id[$i]}&historyDepth=2")
             rlAssertEquals "Assert the previous item in history" "$(echo $response | jq -r .content[0].resources[1].id)" "${launch1_test_id[$i]}"
         done
 
@@ -317,13 +332,14 @@ rlJournalStart
         rlRun -s "tmt run --verbose --all report --how reportportal --suite-per-plan --launch '${launch_name}_3' --exclude-variables ''" 2 "" 1>/dev/null
 
         for i in {1..3}; do
+            echo ""
             test_name=${test[$i,'name']}
             test_fullname=${TEST_PREFIX}${test_name}
             test_uuid=$(rlRun "grep -m$i -A1 'test:' $rlRun_LOG | tail -n1 | awk '{print \$NF}' ")
             rlAssertNotEquals "Assert the test$i uuid is not empty" "{$test_uuid}" ""
 
-            # TEST ITEM - via API test-item-controller /v1/{projectName}/item/uuid/{itemId}
-            response=$(curl -X GET "$URL/api/v1/$PROJECT/item/uuid/$test_uuid" -H  "accept: */*" -H  "Authorization: bearer $TOKEN")
+            # REST API GET | test-item-controller (uuid)
+            response=$(rest_api GET "$URL/api/v1/$PROJECT/item/uuid/$test_uuid")
             rlAssertEquals "Assert the name is correct" "$(echo $response | jq -r '.name')" "$test_fullname"
             launch3_test_id[$i]=$(echo $response | jq -r '.id')
             rlAssertNotEquals "Assert the test id is not empty" "$launch3_test_id[$i]" ""
@@ -334,9 +350,9 @@ rlJournalStart
             rm tmp_attributes*
 
             # history is not aggregated unless test case id is defined for given test (only test_2)
-            [[ $i -eq 2 ]] && rlLog "Verify the history is aggregated" || rlLog "Verify the history is not aggregated"
-            response=$(curl -X GET "$URL/api/v1/$PROJECT/item/history?filter.eq.id=${launch3_test_id[$i]}&historyDepth=2" -H  "accept: */*" -H  "Authorization: bearer $TOKEN")
-            rlAssertEquals "Assert the response has no error message" "$(echo $response | jq -r .message | grep 'Error')" ""
+            [[ $i -eq 2 ]] && rlLogInfo "Verify the history is aggregated" || rlLogInfo "Verify the history is not aggregated"
+            # REST API GET | test-item-controller (history)
+            response=$(rest_api GET "$URL/api/v1/$PROJECT/item/history?filter.eq.id=${launch3_test_id[$i]}&historyDepth=2")
             [[ $i -eq 2 ]] && rlAssertEquals "Assert the previous item is in history" "$(echo $response | jq -r .content[0].resources[1].id)" "${launch2_test_id[$i]}" \
                            || rlAssertNotEquals "Assert the previous item is not in history" "$(echo $response | jq -r .content[0].resources[1].id)" "${launch2_test_id[$i]}"
         done
@@ -362,15 +378,14 @@ rlJournalStart
         foo_tests   # >> $test_uuid[1..3], $test_fullname[1..3]
         rlAssertGrep "suite: $suite_name" $rlRun_LOG
 
-        # LAUNCH - via API launch-controller /v1/{projectName}/launch/uuid/{launchId}
-        rlLog "REST API - Get info about the launch"
-        response=$(curl -X GET "$URL/api/v1/$PROJECT/launch/uuid/$launch_uuid" -H  "accept: */*" -H  "Authorization: bearer $TOKEN")
+        rlLogInfo "Get info about the launch"
+        # REST API GET | launch-controller (uuid)
+        response=$(rest_api GET "$URL/api/v1/$PROJECT/launch/uuid/$launch_uuid")
         rlAssertEquals "Assert the launch is rerun" "$(echo $response | jq -r '.rerun')" "true"
 
-        # TEST ITEMS - test-item-controller /v1/{projectName}/item  + launch_id
-        rlLog "REST API - Get info about all launch items"
-        response=$(curl -X GET "$URL/api/v1/$PROJECT/item?filter.eq.launchId=$launch_id" -H  "accept: */*" -H  "Authorization: bearer $TOKEN")
-        rlAssertEquals "Assert the response has no error message" "$(echo $response | jq -r .message | grep 'Error')" ""
+        rlLogInfo "Get info about all launch items"
+        # REST API GET | test-item-controller (launch_id)
+        response=$(rest_api GET "$URL/api/v1/$PROJECT/item?filter.eq.launchId=$launch_id")
 
         length=$(echo $response | jq -r ".content | length")
         for ((content_index=1; content_index<$length; content_index++ )); do
@@ -392,10 +407,9 @@ rlJournalStart
         rlRun -s "tmt run --verbose --last --all report --how reportportal --suite-per-plan --launch '$launch_name' --again" 2 "" 1>/dev/null
         foo_launch  # >> $launch_uuid, $launch_id
 
-        # ITEMS - via API  test-item-controller  /v1/{projectName}/item  + launch_id
-        rlLog "REST API - Get info about all launch items"
-        response=$(curl -X GET "$URL/api/v1/$PROJECT/item?filter.eq.launchId=$launch_id" -H  "accept: */*" -H  "Authorization: bearer $TOKEN")
-        rlAssertEquals "Assert the response has no error message" "$(echo $response | jq -r .error)" "null"
+        rlLogInfo "Get info about all launch items"
+        # REST API GET | test-item-controller (launch_id)
+        response=$(rest_api GET "$URL/api/v1/$PROJECT/item?filter.eq.launchId=$launch_id")
 
         length=$(echo $response | jq -r ".content | length")
         for ((content_index=1; content_index<$length; content_index++ )); do
@@ -405,11 +419,9 @@ rlJournalStart
             rlAssertNotEquals "Assert the test$i id is not empty" "${test_id[$i]}" ""
 
             test_name=${test[$i,'name']}
-            # LOGS - via API log-controller /v1/{projectName}/log/nested/{parentId}
-            rlLog "REST API - Get all logs from the test$i"
-            response_log=$(curl -X GET "$URL/api/v1/$PROJECT/log/nested/${test_id[$i]}" -H  "accept: */*" -H  "Authorization: bearer $TOKEN")
-            rlAssertEquals "Assert the response has no error message" "$(echo $response_log | jq -r .error)" "null"
-            echo "$response_log" | jq
+            rlLogInfo "Get all logs from the test$i"
+            # REST API GET | log-controller (parent_id)
+            response_log=$(rest_api GET "$URL/api/v1/$PROJECT/log/nested/${test_id[$i]}")
 
             length_log=$(echo $response_log | jq -r ".content | length")
             if [[ $i -eq 2 ]]; then
@@ -437,10 +449,9 @@ rlJournalStart
         foo_launch  # >> $launch_uuid, $launch_id
         foo_tests   # >> $test_uuid[1..3], $test_fullname[1..3]
 
-        # ITEMS - via API  test-item-controller  /v1/{projectName}/item  + launch_id
-        rlLog "REST API - Get info about all launch items"
-        response=$(curl -X GET "$URL/api/v1/$PROJECT/item?filter.eq.launchId=$launch_id" -H  "accept: */*" -H  "Authorization: bearer $TOKEN")
-        rlAssertEquals "Assert the response has no error message" "$(echo $response | jq -r .error)" "null"
+        rlLogInfo "Get info about all launch items"
+        # REST API GET | test-item-controller (launch_id)
+        response=$(rest_api GET "$URL/api/v1/$PROJECT/item?filter.eq.launchId=$launch_id")
 
         length=$(echo $response | jq -r ".content | length")
         for ((content_index=1; content_index<$length; content_index++ )); do
@@ -452,10 +463,9 @@ rlJournalStart
         rlRun -s "tmt run --last --all report --verbose --how reportportal --suite-per-plan --launch '$launch_name' --again" 2 "" 1>/dev/null
         foo_launch  # >> $launch_uuid, $launch_id
 
-        # ITEMS - via API  test-item-controller  /v1/{projectName}/item  + launch_id
-        rlLog "REST API - Get info about all launch items"
-        response=$(curl -X GET "$URL/api/v1/$PROJECT/item?filter.eq.launchId=$launch_id" -H  "accept: */*" -H  "Authorization: bearer $TOKEN")
-        rlAssertEquals "Assert the response has no error message" "$(echo $response | jq -r .error)" "null"
+        rlLogInfo "Get info about all launch items"
+        # REST API GET | test-item-controller (launch_id)
+        response=$(rest_api GET "$URL/api/v1/$PROJECT/item?filter.eq.launchId=$launch_id")
 
         length=$(echo $response | jq -r ".content | length")
         for ((content_index=1; content_index<$length; content_index++ )); do
@@ -477,10 +487,9 @@ rlJournalStart
         foo_launch  # >> $launch_uuid, $launch_id
         init_launch_uuid=$launch_uuid
 
-        # TEST ITEMS - test-item-controller /v1/{projectName}/item  + launch_id
-        rlLog "REST API - Get info about all launch items (1)"
-        response=$(curl -X GET "$URL/api/v1/$PROJECT/item?filter.eq.launchId=$launch_id" -H  "accept: */*" -H  "Authorization: bearer $TOKEN")
-        rlAssertEquals "Assert the response has no error message" "$(echo $response | jq -r .message | grep 'Error')" ""
+        rlLogInfo "Get info about all launch items (1)"
+        # REST API GET | test-item-controller (launch_id)
+        response=$(rest_api GET "$URL/api/v1/$PROJECT/item?filter.eq.launchId=$launch_id")
         rlAssertEquals "Assert launch contains suite and 3 test items" "$(echo $response | jq -r .page.totalElements)" "4"
 
         echo ""
@@ -488,21 +497,19 @@ rlJournalStart
         foo_launch  # >> $launch_uuid, $launch_id
         rlAssertEquals "Assert the launch uuid is same" "$init_launch_uuid" "$launch_uuid"
 
-        # TEST ITEMS - test-item-controller /v1/{projectName}/item  + launch_id
-        rlLog "REST API - Get info about all launch items (2)"
-        response=$(curl -X GET "$URL/api/v1/$PROJECT/item?filter.eq.launchId=$launch_id" -H  "accept: */*" -H  "Authorization: bearer $TOKEN")
-        rlAssertEquals "Assert the response has no error message" "$(echo $response | jq -r .message | grep 'Error')" ""
+        rlLogInfo "Get info about all launch items (2)"
+        # REST API GET | test-item-controller (launch_id)
+        response=$(rest_api GET "$URL/api/v1/$PROJECT/item?filter.eq.launchId=$launch_id")
         rlAssertEquals "Assert launch contains another suite and 3 test items" "$(echo $response | jq -r .page.totalElements)" "8"
 
         echo ""
         rlRun -s "tmt run --all report --verbose --how reportportal --launch-per-plan --upload-to-launch '$launch_id'" 2 "" 1>/dev/null
         foo_launch  # >> $launch_uuid, $launch_id
-        rlAssertEquals "Assert the response has no error message" "$init_launch_uuid" "$launch_uuid"
+        rlAssertEquals "Assert the launch uuid is same" "$init_launch_uuid" "$launch_uuid"
 
-        # TEST ITEMS - test-item-controller /v1/{projectName}/item  + launch_id
-        rlLog "REST API - Get info about all launch items (3)"
-        response=$(curl -X GET "$URL/api/v1/$PROJECT/item?filter.eq.launchId=$launch_id" -H  "accept: */*" -H  "Authorization: bearer $TOKEN")
-        rlAssertEquals "Assert the response has no error message" "$(echo $response | jq -r .message | grep 'Error')" ""
+        rlLogInfo "Get info about all launch items (3)"
+        # REST API GET | test-item-controller (launch_id)
+        response=$(rest_api GET "$URL/api/v1/$PROJECT/item?filter.eq.launchId=$launch_id")
         rlAssertEquals "Assert launch contains another 3 test items" "$(echo $response | jq -r .page.totalElements)" "11"
 
     rlPhaseEnd
@@ -519,18 +526,16 @@ rlJournalStart
         foo_suite  # >> $suite_uuid
         init_launch_uuid=$launch_uuid
 
-        # response=$(curl -X GET "$URL/api/v1/$PROJECT/item/$suite_uuid"  -H  "accept: */*" -H  "Authorization: bearer $TOKEN")
-        # rlAssertNotEquals "Assert the response has no error message" "$(echo $response | jq -r .errorCode | grep '4043')" ""
+        # response=$(rest_api GET "$URL/api/v1/$PROJECT/item/$suite_uuid")
 
         # echo $response | jq
         # suite_id=$(echo $response | jq -r .id)
         # echo $suite_id
 
         # #TODO verify new tests created in given suite
-        # # TEST ITEMS - test-item-controller /v1/{projectName}/item  + launch_id
-        # rlLog "REST API - Get info about all launch items (1)"
-        # response=$(curl -X GET "$URL/api/v1/$PROJECT/item?filter.eq.launchId=$launch_id&filter.eq.parentId=$suite_id"  -H  "accept: */*" -H  "Authorization: bearer $TOKEN")
-        # rlAssertNotEquals "Assert the response has no error message" "$(echo $response | jq -r .errorCode | grep '4043')" ""
+        # rlLogInfo "Get info about all launch items (1)"
+        # # REST API GET | test-item-controller (parent_id)
+        # response=$(rest_api GET "$URL/api/v1/$PROJECT/item?filter.eq.launchId=$launch_id&filter.eq.parentId=$suite_id")
 
         # echo $response | jq
 
