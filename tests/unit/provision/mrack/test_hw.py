@@ -167,6 +167,14 @@ def test_maximal_constraint(root_logger: Logger) -> None:
                                 },
                             {
                                 'disk': {
+                                    'phys_sector_size': {
+                                        '_op': '==',
+                                        '_value': '4096'
+                                        }
+                                    }
+                                },
+                            {
+                                'disk': {
                                     'model': {
                                         '_op': 'like',
                                         '_value': 'WD 100G%'
@@ -182,6 +190,14 @@ def test_maximal_constraint(root_logger: Logger) -> None:
                                     'size': {
                                         '_op': '==',
                                         '_value': '128849018880'
+                                        }
+                                    }
+                                },
+                            {
+                                'disk': {
+                                    'sector_size': {
+                                        '_op': '==',
+                                        '_value': '512'
                                         }
                                     }
                                 },
