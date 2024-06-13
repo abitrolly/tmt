@@ -408,6 +408,7 @@ class Try(tmt.utils.Common):
         # Create run, prepare it for testing
         run = tmt.base.Run(tree=self.tree, logger=self._logger, parent=self)
         run.prepare_for_try(self.tree)
+        run._save_tree(self.tree)
         self._workdir = run.workdir
         self.environment = run.environment
 
