@@ -152,7 +152,7 @@ class Finish(tmt.steps.Step):
 
             guest_copies.append(guest_copy)
 
-        queue: PhaseQueue[FinishStepData, None] = PhaseQueue(
+        queue: PhaseQueue[FinishStepData, list[PhaseResult]] = PhaseQueue(
             'finish',
             self._logger.descend(logger_name=f'{self}.queue'))
 
@@ -166,7 +166,7 @@ class Finish(tmt.steps.Step):
                     guests=[guest for guest in guest_copies if phase.enabled_on_guest(guest)]
                     )
 
-        failed_tasks: list[Union[ActionTask, PluginTask[FinishStepData, PhaseResult]]] = []
+        failed_tasks: list[Union[ActionTask, PluginTask[FinishStepData, list[PhaseResult]]]] = []
         results: list[PhaseResult] = []
 
         for outcome in queue.run():
@@ -179,7 +179,8 @@ class Finish(tmt.steps.Step):
                 failed_tasks.append(outcome)
                 continue
 
-            results += outcome.result
+            if outcome.result:
+                results += outcome.result
 
         self._save_results(results)
 
