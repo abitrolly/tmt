@@ -27,6 +27,12 @@ rlJournalStart
         rlAssertGrep "Run .* successfully finished. Bye for now!" $rlRun_LOG
     rlPhaseEnd
 
+    rlPhaseStartTest "Epel"
+        rlRun -s "./epel.exp"
+        rlAssertGrep "Let's try.*/plans/basic" $rlRun_LOG
+        rlAssertGrep "Run .* successfully finished. Bye for now!" $rlRun_LOG
+    rlPhaseEnd
+
     rlPhaseStartTest "Verbose Output"
         rlRun -s "TMT_CONFIG_DIR=$config ./verbose.exp"
         rlAssertGrep "custom-prepare" $rlRun_LOG
